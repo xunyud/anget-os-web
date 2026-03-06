@@ -45,6 +45,16 @@ supabase/.temp/
 # claude code local config
 .claude/
 
+# agent tool directories
+.agent/
+.agents/
+.kiro/
+.trae/
+skills-lock.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# vercel
+.vercel

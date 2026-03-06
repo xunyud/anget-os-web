@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  AssigneeType,
   Mission,
   MissionInsert,
   MissionStatus,
@@ -94,4 +95,80 @@ export async function getMissionsByStatus(
 
   if (error) throw error;
   return data as Mission[];
+}
+
+/**
+ * Get the next available todo mission (highest priority, oldest first).
+ * Returns null when no todo missions exist — caller should return a friendly
+ * "empty" response, NOT a 404.
+ */
+export async function getNextTodoMission(
+  client: SupabaseClient,
+): Promise<Mission | null> {
+  const { data, error } = await client
+    .from("missions")
+    .select("*")
+    .eq("status", "todo")
+    .order("priority", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as Mission | null;
+}
+
+/**
+ * Claim a mission: set status → in_progress + assignee_type, with CAS version check.
+ * Returns the updated mission, or null on version conflict.
+ */
+export async function claimMission(
+  client: SupabaseClient,
+  id: string,
+  assigneeType: AssigneeType,
+  expectedVersion: number,
+): Promise<Mission | null> {
+  const { data, error } = await client
+    .from("missions")
+    .update({
+      status: "in_progress" as MissionStatus,
+      assignee_type: assigneeType,
+      version: expectedVersion + 1,
+    })
+    .eq("id", id)
+    .eq("version", expectedVersion)
+    .select()
+    .single();
+
+  if (error && error.code === "PGRST116") return null;
+  if (error) throw error;
+  return data as Mission;
+}
+
+/**
+ * Submit mission result: set output_context_id + status → reviewing, with CAS version check.
+ * Agents can only advance to "reviewing", never "completed".
+ * Returns the updated mission, or null on version conflict.
+ */
+export async function submitMission(
+  client: SupabaseClient,
+  id: string,
+  outputContextId: string,
+  expectedVersion: number,
+): Promise<Mission | null> {
+  const { data, error } = await client
+    .from("missions")
+    .update({
+      status: "reviewing" as MissionStatus,
+      output_context_id: outputContextId,
+      version: expectedVersion + 1,
+    })
+    .eq("id", id)
+    .eq("version", expectedVersion)
+    .select()
+    .single();
+
+  if (error && error.code === "PGRST116") return null;
+  if (error) throw error;
+  return data as Mission;
 }

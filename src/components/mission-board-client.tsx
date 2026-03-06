@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import type { Mission, MissionInsert, MissionStatus } from "@/types/database";
 import {
   addMission,
+  fetchMissions,
   transitionMissionStatus,
 } from "@/app/missions/actions";
 import { MissionBoard } from "./mission-board";
@@ -24,6 +26,29 @@ export function MissionBoardClient({
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("closed");
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // -- Auto-refresh: poll every 5s so board reflects Agent API changes
+  const pollRef = useRef<ReturnType<typeof setInterval>>(null);
+
+  useEffect(() => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const fresh = await fetchMissions();
+        setMissions(fresh);
+        // Also refresh selectedMission if drawer is open
+        setSelectedMission((prev) => {
+          if (!prev) return null;
+          return fresh.find((m) => m.id === prev.id) ?? prev;
+        });
+      } catch {
+        // Silently ignore poll failures — next tick will retry
+      }
+    }, 5000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   // -- Card click → open detail drawer
   const handleCardClick = useCallback((mission: Mission) => {
@@ -114,6 +139,12 @@ export function MissionBoardClient({
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
             {missions.length} missions
           </span>
+          <Link
+            href="/dashboard"
+            className="rounded-md border border-border bg-zinc-900 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-zinc-600 hover:bg-zinc-800 hover:text-foreground"
+          >
+            Dashboard
+          </Link>
           <button
             onClick={handleNewClick}
             disabled={loading}
